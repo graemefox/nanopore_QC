@@ -16,11 +16,15 @@ cd nanopore_QC
 
 #### Input Data
 The pipeline takes either BAM or FastQ files.
-Pass either a single BAM/FAstQ or a list of BAMs/FastQc like 
+Pass either a single BAM/FAstQ or a list of BAMs/FastQs like 
 ```
-/path/to/*bam
+--bam /path/to/my.bam
 #or
-/path/to/*fq.gz
+--bam /path/to/*bam
+#or
+--fastq /path/to/*fq.gz
+#or
+--fastq /path/to/my.fq.gz
 ```
 
 #### Reference Genomes
@@ -67,7 +71,11 @@ git clone https://github.com/LooseLab/ROBIN_test_set_A.git
 ```
 
 #### Demo command
-To run with the demo data
 ```
-nextflow run main.nf --bams 'ROBIN_test_set_A/test_data_set/*.bam' --ref_dir refs/ --outdir results --threads 8
+nextflow run main.nf --bam 'path/to/*.bam' --ref_dir path/to/refs/ --outdir results --threads 8
+```
+
+To run with the demo data downloaded above
+```
+nextflow run main.nf --bam 'ROBIN_test_set_A/test_data_set/*.bam' --ref_dir refs/ --outdir results --threads 8
 ```

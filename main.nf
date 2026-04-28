@@ -7,14 +7,14 @@ outdir.mkdir()
 
 nextflow_version="v.0.1"
 
-params.bams    = false
+params.bam    = false
 params.fastq   = false
 params.my_param = false
 
-if (!params.bams && !params.fastq) {
+if (!params.bam && !params.fastq) {
     error "ERROR: Please provide either --bams or --fastq"
 }
-if (params.bams && params.fastq) {
+if (params.bam && params.fastq) {
     error "ERROR: Please provide either --bams or --fastq, not both"
 }
 
@@ -26,7 +26,7 @@ log.info """\
 
         INPUTS
         ================================================================
-        bams                     : ${params.bams}
+        bams                     : ${params.bam}
         fastq                    : ${params.fastq}
         ref_dir                  : ${params.ref_dir}
         threads                  : ${params.threads}
@@ -206,9 +206,9 @@ workflow {
 
     GET_VERSIONS()
 
-    if (params.bams) {
+    if (params.bam) {
 
-        Channel.fromPath(params.bams, checkIfExists: true).collect().set { bams }
+        Channel.fromPath(params.bam, checkIfExists: true).collect().set { bams }
 
         CAT_BAMS_CH        = CAT_BAMS(bams, threads)
         INDEX_MERGED_BAM_CH = INDEX_MERGED_BAM(CAT_BAMS_CH.merged_bam, threads)
