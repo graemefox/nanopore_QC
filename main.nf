@@ -7,15 +7,14 @@ outdir.mkdir()
 
 nextflow_version="v.0.1"
 
-params.bam    = false
-params.fastq   = false
-params.my_param = false
+params.bam   = false
+params.fastq = false
 
 if (!params.bam && !params.fastq) {
-    error "ERROR: Please provide either --bams or --fastq"
+    error "ERROR: Please provide either --bam or --fastq"
 }
 if (params.bam && params.fastq) {
-    error "ERROR: Please provide either --bams or --fastq, not both"
+    error "ERROR: Please provide either --bam or --fastq, not both"
 }
 
 log.info """\
@@ -26,7 +25,7 @@ log.info """\
 
         INPUTS
         ================================================================
-        bams                     : ${params.bam}
+        bam                      : ${params.bam}
         fastq                    : ${params.fastq}
         ref_dir                  : ${params.ref_dir}
         threads                  : ${params.threads}
@@ -52,62 +51,16 @@ process GET_VERSIONS {
         """
 }
 
-process CAT_BAMS {
+process BAM_TO_FASTQ {
     input:
         path(bams)
-        val(threads)
 
     output:
-       path "merged.sorted.bam", emit: merged_bam
+        path "reads.fastq.gz", emit: reads_fastq
 
     script:
         """
-        samtools cat -o merged.bam ${bams}
-        samtools sort -@${threads} -o merged.sorted.bam merged.bam
-        """
-}
-
-process INDEX_MERGED_BAM {
-    input:
-        path(input_bam)
-        val(threads)
-
-    output:
-        path "*.bai", emit: indexed_bam
-        tuple path(input_bam), path("*.bai"), emit: indexed_bam_tuple
-
-    script:
-        """
-        samtools \
-        index \
-        -@${threads} \
-        ${input_bam}
-        """
-}
-
-process NANOPLOT_BAM {
-    input:
-        path(input_bam)
-        val(threads)
-        path(indexed_bam)
-
-    publishDir("${params.outdir}/NanoPlot",      mode: 'copy', pattern: "NanoPlot-report.html")
-    publishDir("${params.outdir}/NanoPlot",      mode: 'copy', pattern: "NanoStats.txt")
-    publishDir("${params.outdir}/NanoPlot",      mode: 'copy', pattern: "NanoPlot-data.tsv.gz")
-    publishDir("${params.outdir}/NanoPlot/pngs", mode: 'copy', pattern: "*.png")
-
-    output:
-        path "NanoPlot-report.html", emit: nanoplot_report
-        path "NanoStats.txt",        emit: nanoplot_stats
-        path "NanoPlot-data.tsv.gz", emit: nanoplot_data
-        path "*.png"
-
-    script:
-        """
-        NanoPlot \
-        -t ${threads} \
-        --bam ${input_bam} \
-        --raw
+        samtools cat ${bams} | samtools fastq -0 - | gzip -c > reads.fastq.gz
         """
 }
 
@@ -133,35 +86,6 @@ process NANOPLOT_FASTQ {
         -t ${threads} \
         --fastq ${fastq_files} \
         --raw
-        """
-}
-
-process WF_ALIGNMENT_BAM {
-    input:
-        path(merged_bam)
-        path(ref_dir)
-        val(threads)
-
-    publishDir("${params.outdir}/wf-alignment",      mode: 'copy', pattern: "wf-alignment-report.html")
-    publishDir("${params.outdir}/wf-alignment/data", mode: 'copy', pattern: "**.{hist,tsv,json}")
-
-    output:
-        path("wf-alignment-report.html")
-        path("**.{hist,tsv,json}")
-
-    script:
-        """
-        samtools fastq -@ ${threads} -0 reads.fastq.gz -c 6 ${merged_bam}
-
-        nextflow run epi2me-labs/wf-alignment -r master \
-        -profile standard \
-        -ansi-log false \
-        -work-dir ./nf-work \
-        --references ${ref_dir} \
-        --fastq reads.fastq.gz \
-        --threads ${threads} \
-        --depth_coverage false \
-        --out_dir .
         """
 }
 
@@ -209,17 +133,13 @@ workflow {
     if (params.bam) {
 
         Channel.fromPath(params.bam, checkIfExists: true).collect().set { bams }
-
-        CAT_BAMS_CH        = CAT_BAMS(bams, threads)
-        INDEX_MERGED_BAM_CH = INDEX_MERGED_BAM(CAT_BAMS_CH.merged_bam, threads)
-
-        NANOPLOT_BAM(CAT_BAMS_CH.merged_bam, threads, INDEX_MERGED_BAM_CH.indexed_bam)
-        WF_ALIGNMENT_BAM(CAT_BAMS_CH.merged_bam, ref_dir, threads)
+        BAM_TO_FASTQ_CH = BAM_TO_FASTQ(bams)
+        NANOPLOT_FASTQ(BAM_TO_FASTQ_CH.reads_fastq, threads)
+        WF_ALIGNMENT_FASTQ(BAM_TO_FASTQ_CH.reads_fastq, ref_dir, threads)
 
     } else {
 
         Channel.fromPath(params.fastq, checkIfExists: true).collect().set { fastq_files }
-
         NANOPLOT_FASTQ(fastq_files, threads)
         WF_ALIGNMENT_FASTQ(fastq_files, ref_dir, threads)
 
