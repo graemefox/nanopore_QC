@@ -1,0 +1,9 @@
+name: ont_qc_pipeline
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - samtools
+  - minimap2
+  - nanoplot
