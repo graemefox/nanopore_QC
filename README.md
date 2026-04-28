@@ -19,11 +19,11 @@ The pipeline takes either BAM or FastQ files.
 Pass either a single BAM/FAstQ or a list of BAMs/FastQs like 
 ```
 --bam /path/to/my.bam
-#or
+# or
 --bam /path/to/*bam
-#or
+# or
 --fastq /path/to/*fq.gz
-#or
+# or
 --fastq /path/to/my.fq.gz
 ```
 
@@ -73,6 +73,8 @@ git clone https://github.com/LooseLab/ROBIN_test_set_A.git
 #### Demo command
 ```
 nextflow run main.nf --bam 'path/to/*.bam' --ref_dir path/to/refs/ --outdir results --threads 8
+# or
+nextflow run main.nf --fastq 'path/to/*.fq.gz' --ref_dir path/to/refs/ --outdir results --threads 8
 ```
 
 To run with the demo data downloaded above
