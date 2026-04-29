@@ -90,6 +90,20 @@ process DOWNSAMPLE_BAM {
         """
 }
 
+// Downsample per FASTQ in parallel using seqtk sample (seed 42, deterministic).
+process DOWNSAMPLE_FASTQ {
+    input:
+        path(fastq)
+
+    output:
+        path("${fastq.simpleName}.ds.fq.gz"), emit: downsampled_fastq
+
+    script:
+        """
+        seqtk sample -s 42 ${fastq} ${params.downsample} | gzip > ${fastq.simpleName}.ds.fq.gz
+        """
+}
+
 // NanoPlot from BAM input (full data — no downsampling)
 process NANOPLOT_BAM {
     input:
@@ -158,17 +172,13 @@ process WF_ALIGNMENT_BAM {
 
     script:
         """
-        mkdir -p bam_input
-        cd bam_input
-        for f in ${bams}; do ln -s \$(realpath \$f) .; done
-        cd ..
 
         nextflow run epi2me-labs/wf-alignment -r master \
         -profile standard \
         -ansi-log false \
         -work-dir ./nf-work \
         --references ${ref_dir} \
-        --bam bam_input \
+        --bam ${bams} \
         --threads ${threads} \
         --depth_coverage false \
         --out_dir .
@@ -191,17 +201,12 @@ process WF_ALIGNMENT_FASTQ {
 
     script:
         """
-        mkdir -p fastq_input
-        cd fastq_input
-        for f in ${fastq_files}; do ln -s \$(realpath \$f) .; done
-        cd ..
-
         nextflow run epi2me-labs/wf-alignment -r master \
         -profile standard \
         -ansi-log false \
         -work-dir ./nf-work \
         --references ${ref_dir} \
-        --fastq fastq_input \
+        --fastq ${fastq_files} \
         --threads ${threads} \
         --depth_coverage false \
         --out_dir .
@@ -217,33 +222,47 @@ workflow {
     Channel.fromPath(params.ref_dir, checkIfExists: true).set { ref_dir }
     Channel.from(params.threads).set { threads }
 
-    GET_VERSIONS()
+    GET_VERSIONS_CH = GET_VERSIONS()
 
     if (params.bam) {
-
+// Working with BAMs:
         Channel.fromPath(params.bam, checkIfExists: true).set { bams_ch }
 
         // Reset all BAMs in parallel (strips alignment info from pre-aligned BAMs)
-        RESET_BAM(bams_ch)
-        RESET_BAM.out.reset_bam.collect().set { reset_bams }
+        RESET_BAM_CH = RESET_BAM(bams_ch)
 
         // NanoPlot always gets full (non-downsampled) reset BAMs for accurate stats
-        NANOPLOT_BAM(reset_bams, threads)
+        NANOPLOT_BAM_CH = NANOPLOT_BAM(RESET_BAM_CH.reset_bam, threads)
 
         // wf-alignment gets downsampled BAMs if --downsample is set, otherwise full
         if (params.downsample) {
-            DOWNSAMPLE_BAM(RESET_BAM.out.reset_bam)
-            DOWNSAMPLE_BAM.out.downsampled_bam.collect().set { align_bams }
+        // Yes, we're downsampling
+            DOWNSAMPLE_BAM_CH = DOWNSAMPLE_BAM(RESET_BAM_CH.reset_bam)
+
+            WF_ALIGNMENT_BAM_CH = WF_ALIGNMENT_BAM(DOWNSAMPLE_BAM_CH.downsampled_bam, ref_dir, threads)
+
         } else {
-            align_bams = reset_bams
+        // No downsampling
+              WF_ALIGNMENT_BAM_CH = WF_ALIGNMENT_BAM(RESET_BAM_CH.reset_bam, ref_dir, threads)
         }
-        WF_ALIGNMENT_BAM(align_bams, ref_dir, threads)
 
     } else {
-
+//        Working with FastQs....
+        Channel.fromPath(params.fastq, checkIfExists: true).set { fastq_ch }
         Channel.fromPath(params.fastq, checkIfExists: true).collect().set { fastq_files }
-        NANOPLOT_FASTQ(fastq_files, threads)
-        WF_ALIGNMENT_FASTQ(fastq_files, ref_dir, threads)
 
+        // NanoPlot always gets the full (non-downsampled) data for accurate stats
+        NANOPLOT_FASTQ_CH = NANOPLOT_FASTQ(fastq_files, threads)
+
+        // wf-alignment gets downsampled FASTQs if --downsample is set, otherwise full
+        if (params.downsample) {
+        // Yes, we're downsampling
+            DOWNSAMPLE_FASTQ_CH = DOWNSAMPLE_FASTQ(fastq_ch)
+            WF_ALIGNMENT_FASTQ_CH = WF_ALIGNMENT_FASTQ(DOWNSAMPLE_FASTQ_CH.downsampled_fastq, ref_dir, threads)
+
+        } else {
+        // No downsampling
+            WF_ALIGNMENT_FASTQ_CH = WF_ALIGNMENT_FASTQ(fastq_files, ref_dir, threads)
+        }
     }
 }

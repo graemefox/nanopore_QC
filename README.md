@@ -81,3 +81,16 @@ To run with the demo data downloaded above
 ```
 nextflow run main.nf --bam 'ROBIN_test_set_A/test_data_set/*.bam' --ref_dir refs/ --outdir results --threads 8
 ```
+
+#### Downsample large data
+For large datasets you may want to downsample the data for wf-alignment
+(NanoPlot takes the entire dataset)
+
+It works with FastQ and BAM inputs.
+
+Adding "--downsample 0.1" runs wf-alignmemt with a random 10% of the data
+
+```
+nextflow run main.nf --downsample 0.1 --fastq 'path/to/*.fq.gz' --ref_dir path/to/refs/ --outdir results --threads 8
+```
+
