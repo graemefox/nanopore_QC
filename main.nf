@@ -159,7 +159,9 @@ process WF_ALIGNMENT_BAM {
     script:
         """
         mkdir -p bam_input
-        for f in ${bams}; do ln -s \$(realpath \$f) bam_input/; done
+        cd bam_input
+        for f in ${bams}; do ln -s \$(realpath \$f) .; done
+        cd ..
 
         nextflow run epi2me-labs/wf-alignment -r master \
         -profile standard \
@@ -190,7 +192,9 @@ process WF_ALIGNMENT_FASTQ {
     script:
         """
         mkdir -p fastq_input
-        for f in ${fastq_files}; do ln -s \$(realpath \$f) fastq_input/; done
+        cd fastq_input
+        for f in ${fastq_files}; do ln -s \$(realpath \$f) .; done
+        cd ..
 
         nextflow run epi2me-labs/wf-alignment -r master \
         -profile standard \
