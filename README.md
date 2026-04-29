@@ -69,6 +69,13 @@ zcat refs/Mus_musculus.GRCm38.dna.primary_assembly.fa.gz \
 ```
 git clone https://github.com/LooseLab/ROBIN_test_set_A.git
 ```
+#### Choosing a profile for EPI2ME subworkflows
+By default the EPI2ME workflows will try to use docker which won't work on the HPC.
+
+Specify singularity:
+```
+--EPI2ME_profile singularity
+```
 
 #### Demo command
 ```

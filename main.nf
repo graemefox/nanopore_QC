@@ -7,9 +7,10 @@ outdir.mkdir()
 
 nextflow_version="v.0.1"
 
-params.bam        = false
-params.fastq      = false
-params.downsample = false   // fraction to keep e.g. 0.1 for 10%. false = no downsampling
+params.bam                  = false
+params.fastq                = false
+params.downsample           = false   // fraction to keep e.g. 0.1 for 10%. false = no downsampling
+params.EPI2ME_profile = 'standard'
 
 if (!params.bam && !params.fastq) {
     error "ERROR: Please provide either --bam or --fastq"
@@ -174,7 +175,7 @@ process WF_ALIGNMENT_BAM {
         """
 
         nextflow run epi2me-labs/wf-alignment -r master \
-        -profile standard \
+        -profile ${params.EPI2ME_profile} \
         -ansi-log false \
         -work-dir ./nf-work \
         --references ${ref_dir} \
@@ -202,7 +203,7 @@ process WF_ALIGNMENT_FASTQ {
     script:
         """
         nextflow run epi2me-labs/wf-alignment -r master \
-        -profile standard \
+        -profile ${params.EPI2ME_profile} \
         -ansi-log false \
         -work-dir ./nf-work \
         --references ${ref_dir} \
