@@ -7,8 +7,9 @@ outdir.mkdir()
 
 nextflow_version="v.0.1"
 
-params.bam   = false
-params.fastq = false
+params.bam        = false
+params.fastq      = false
+params.downsample = false   // fraction to keep e.g. 0.1 for 10%. false = no downsampling
 
 if (!params.bam && !params.fastq) {
     error "ERROR: Please provide either --bam or --fastq"
@@ -27,6 +28,7 @@ log.info """\
         ================================================================
         bam                      : ${params.bam}
         fastq                    : ${params.fastq}
+        downsample               : ${params.downsample}
         ref_dir                  : ${params.ref_dir}
         threads                  : ${params.threads}
         outdir                   : ${params.outdir}
@@ -51,19 +53,70 @@ process GET_VERSIONS {
         """
 }
 
-process BAM_TO_FASTQ {
+// Strip alignment info per BAM in parallel — only if the BAM has been aligned.
+// @SQ lines in the header indicate alignment to a reference; absent = already unmapped.
+process RESET_BAM {
     input:
-        path(bams)
+        path(bam)
 
     output:
-        path "reads.fastq.gz", emit: reads_fastq
+        path("${bam.baseName}.reset.bam"), emit: reset_bam
 
     script:
         """
-        samtools cat ${bams} | samtools fastq -0 - | gzip -c > reads.fastq.gz
+        if samtools view -H ${bam} | grep -q "^@SQ"; then
+            echo "Aligned BAM detected — resetting ${bam}"
+            samtools reset -x OA,XA --no-PG ${bam} -o ${bam.baseName}.reset.bam
+        else
+            echo "Unaligned BAM — skipping reset for ${bam}"
+            ln -s \$(realpath ${bam}) ${bam.baseName}.reset.bam
+        fi
         """
 }
 
+// Downsample per reset BAM in parallel using a read-name hash.
+// -s seed.fraction: safe on coordinate-sorted BAMs (hashes read name, not position).
+process DOWNSAMPLE_BAM {
+    input:
+        path(bam)
+
+    output:
+        path("${bam.baseName}.ds.bam"), emit: downsampled_bam
+
+    script:
+        def fraction = (params.downsample * 100).toInteger()
+        """
+        samtools view -s 42.${fraction} -b ${bam} -o ${bam.baseName}.ds.bam
+        """
+}
+
+// NanoPlot from BAM input (full data — no downsampling)
+process NANOPLOT_BAM {
+    input:
+        path(bams)
+        val(threads)
+
+    publishDir("${params.outdir}/NanoPlot",      mode: 'copy', pattern: "NanoPlot-report.html")
+    publishDir("${params.outdir}/NanoPlot",      mode: 'copy', pattern: "NanoStats.txt")
+    publishDir("${params.outdir}/NanoPlot",      mode: 'copy', pattern: "NanoPlot-data.tsv.gz")
+    publishDir("${params.outdir}/NanoPlot/pngs", mode: 'copy', pattern: "*.png")
+
+    output:
+        path "NanoPlot-report.html", emit: nanoplot_report
+        path "NanoStats.txt",        emit: nanoplot_stats
+        path "NanoPlot-data.tsv.gz", emit: nanoplot_data
+        path "*.png"
+
+    script:
+        """
+        NanoPlot \
+        -t ${threads} \
+        --ubam ${bams} \
+        --raw
+        """
+}
+
+// NanoPlot from FASTQ input
 process NANOPLOT_FASTQ {
     input:
         path(fastq_files)
@@ -89,6 +142,38 @@ process NANOPLOT_FASTQ {
         """
 }
 
+// wf-alignment from BAM input (symlinked into a directory as the pipeline expects)
+process WF_ALIGNMENT_BAM {
+    input:
+        path(bams)
+        path(ref_dir)
+        val(threads)
+
+    publishDir("${params.outdir}/wf-alignment",      mode: 'copy', pattern: "wf-alignment-report.html")
+    publishDir("${params.outdir}/wf-alignment/data", mode: 'copy', pattern: "**.{hist,tsv,json}")
+
+    output:
+        path("wf-alignment-report.html")
+        path("**.{hist,tsv,json}")
+
+    script:
+        """
+        mkdir -p bam_input
+        for f in ${bams}; do ln -s \$(realpath \$f) bam_input/; done
+
+        nextflow run epi2me-labs/wf-alignment -r master \
+        -profile standard \
+        -ansi-log false \
+        -work-dir ./nf-work \
+        --references ${ref_dir} \
+        --bam bam_input \
+        --threads ${threads} \
+        --depth_coverage false \
+        --out_dir .
+        """
+}
+
+// wf-alignment from FASTQ input
 process WF_ALIGNMENT_FASTQ {
     input:
         path(fastq_files)
@@ -132,10 +217,23 @@ workflow {
 
     if (params.bam) {
 
-        Channel.fromPath(params.bam, checkIfExists: true).collect().set { bams }
-        BAM_TO_FASTQ_CH = BAM_TO_FASTQ(bams)
-        NANOPLOT_FASTQ(BAM_TO_FASTQ_CH.reads_fastq, threads)
-        WF_ALIGNMENT_FASTQ(BAM_TO_FASTQ_CH.reads_fastq, ref_dir, threads)
+        Channel.fromPath(params.bam, checkIfExists: true).set { bams_ch }
+
+        // Reset all BAMs in parallel (strips alignment info from pre-aligned BAMs)
+        RESET_BAM(bams_ch)
+        RESET_BAM.out.reset_bam.collect().set { reset_bams }
+
+        // NanoPlot always gets full (non-downsampled) reset BAMs for accurate stats
+        NANOPLOT_BAM(reset_bams, threads)
+
+        // wf-alignment gets downsampled BAMs if --downsample is set, otherwise full
+        if (params.downsample) {
+            DOWNSAMPLE_BAM(RESET_BAM.out.reset_bam)
+            DOWNSAMPLE_BAM.out.downsampled_bam.collect().set { align_bams }
+        } else {
+            align_bams = reset_bams
+        }
+        WF_ALIGNMENT_BAM(align_bams, ref_dir, threads)
 
     } else {
 
