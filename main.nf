@@ -156,7 +156,7 @@ process NANOPLOT_FASTQ {
         """
 }
 
-// wf-alignment from BAM input (symlinked into a directory as the pipeline expects)
+// wf-alignment from BAM input 
 process WF_ALIGNMENT_BAM {
     input:
         path(bams)
@@ -249,10 +249,9 @@ workflow {
     } else {
 //        Working with FastQs....
         Channel.fromPath(params.fastq, checkIfExists: true).set { fastq_ch }
-        Channel.fromPath(params.fastq, checkIfExists: true).collect().set { fastq_files }
 
         // NanoPlot always gets the full (non-downsampled) data for accurate stats
-        NANOPLOT_FASTQ_CH = NANOPLOT_FASTQ(fastq_files, threads)
+        NANOPLOT_FASTQ_CH = NANOPLOT_FASTQ(fastq_ch, threads)
 
         // wf-alignment gets downsampled FASTQs if --downsample is set, otherwise full
         if (params.downsample) {
