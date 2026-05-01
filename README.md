@@ -17,14 +17,16 @@ cd nanopore_QC
 #### Input Data
 The pipeline takes either BAM or FastQ files.
 Pass either a single BAM/FAstQ or a list of BAMs/FastQs like 
+(note the single quotes)
+
 ```
---bam /path/to/my.bam
+--bam '/path/to/my.bam'
 # or
---bam /path/to/*bam
+--bam '/path/to/*bam'
 # or
---fastq /path/to/*fq.gz
+--fastq '/path/to/*fq.gz'
 # or
---fastq /path/to/my.fq.gz
+--fastq '/path/to/my.fq.gz'
 ```
 
 #### Reference Genomes
