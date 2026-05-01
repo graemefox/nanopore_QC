@@ -30,16 +30,18 @@ Pass either a single BAM/FAstQ or a list of BAMs/FastQs like
 #### Reference Genomes
 You also pass a directory containing reference genomes to screen against (in .fa or .fa.gz).
 
-For eg. download hg38 and mm10 for use
+For eg. download Human hg38, Mouse mm10 and A. fumigatus for use:
 ```
 mkdir refs
 wget https://ftp.ensembl.org/pub/release-113/fasta/homo_sapiens/dna/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz -P refs/
 wget https://ftp.ensembl.org/pub/release-102/fasta/mus_musculus/dna/Mus_musculus.GRCm38.dna.primary_assembly.fa.gz -P refs/
+wget https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/002/655/GCF_000002655.1_ASM265v1/GCF_000002655.1_ASM265v1_genomic.fna.gz -P refs/
+mv refs/GCF_000002655.1_ASM265v1_genomic.fna.gz refs/Aspergillus_fumigatus_GCF_000002655.1_ASM265v1_genomic.fna.gz
 ```
 
 Note - sequence IDs must be unique across all reference genomes used. 
 Eg. Human and Mouse cannot both have a sequence called "chr1".
-If necessary prepend sequences with the species
+If necessary prepend sequences with the species (it is necessary with these examples)
 ```
 zcat refs/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz | sed 's/^>/>hg38_/' \
     | pigz > refs/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz.tmp \
@@ -50,9 +52,14 @@ zcat refs/Mus_musculus.GRCm38.dna.primary_assembly.fa.gz | sed 's/^>/>mm10_/' \
     | pigz > refs/Mus_musculus.GRCm38.dna.primary_assembly.fa.gz.tmp \
     && mv refs/Mus_musculus.GRCm38.dna.primary_assembly.fa.gz.tmp \
     refs/Mus_musculus.GRCm38.dna.primary_assembly.fa.gz
+
+zcat refs/Aspergillus_fumigatus_GCF_000002655.1_ASM265v1_genomic.fna.gz | sed 's/^>/>Af293_/' \
+    | pigz > refs/Aspergillus_fumigatus_GCF_000002655.1_ASM265v1_genomic.fna.gz.tmp \
+    && mv refs/Aspergillus_fumigatus_GCF_000002655.1_ASM265v1_genomic.fna.gz.tmp \
+    refs/Aspergillus_fumigatus_GCF_000002655.1_ASM265v1_genomic.fna.gz
 ```
 
-Filter to only main chromosome sequences
+Filter to only main chromosome sequences, where appropriate
 ```
 zcat refs/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz \
   | awk 'BEGIN{keep=0} /^>/{keep=($0 ~ /^>hg38_([0-9]+|X|Y|MT) /)} keep' \
