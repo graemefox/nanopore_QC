@@ -8,3 +8,5 @@ dependencies:
   - minimap2
   - nanoplot
   - seqtk
+  - nextflow=25.10.4  # pin to 25.x — epi2me-labs/wf-alignment uses Groovy imports incompatible with Nextflow 26+
+  - singularity
