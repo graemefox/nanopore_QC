@@ -56,6 +56,7 @@ process GET_VERSIONS {
 
 // Strip alignment info per BAM in parallel — only if the BAM has been aligned.
 // @SQ lines in the header indicate alignment to a reference; absent = already unmapped.
+// wf-alignment gets upset if you don't do this as it tried to use the previous alignment info
 process RESET_BAM {
     input:
         path(bam)
@@ -76,18 +77,18 @@ process RESET_BAM {
 }
 
 // Downsample per reset BAM in parallel using a read-name hash.
-// -s seed.fraction: safe on coordinate-sorted BAMs (hashes read name, not position).
+// -s seed.fraction: seed=42, fraction passed directly as float to avoid integer truncation.
 process DOWNSAMPLE_BAM {
     input:
         path(bam)
+        val(fraction)
 
     output:
         path("${bam.baseName}.ds.bam"), emit: downsampled_bam
 
     script:
-        def fraction = (params.downsample * 100).toInteger()
         """
-        samtools view -s 42.${fraction} -b ${bam} -o ${bam.baseName}.ds.bam
+        samtools view --subsample-seed 42 --subsample ${fraction} -b ${bam} -o ${bam.baseName}.ds.bam
         """
 }
 
@@ -95,13 +96,14 @@ process DOWNSAMPLE_BAM {
 process DOWNSAMPLE_FASTQ {
     input:
         path(fastq)
+        val(fraction)
 
     output:
         path("${fastq.simpleName}.ds.fq.gz"), emit: downsampled_fastq
 
     script:
         """
-        seqtk sample -s 42 ${fastq} ${params.downsample} | gzip > ${fastq.simpleName}.ds.fq.gz
+        seqtk sample -s 42 ${fastq} ${fraction} | gzip > ${fastq.simpleName}.ds.fq.gz
         """
 }
 
@@ -237,38 +239,41 @@ workflow {
         // Reset all BAMs in parallel (strips alignment info from pre-aligned BAMs)
         RESET_BAM_CH = RESET_BAM(bams_ch)
 
+        // Collect into a single value channel
+        RESET_BAM_COLLECTED_CH = RESET_BAM_CH.reset_bam.collect()
+
         // NanoPlot always gets full (non-downsampled) reset BAMs for accurate stats
-        // .collect() gathers all per-BAM items into a single list so NanoPlot sees all files
-        NANOPLOT_BAM_CH = NANOPLOT_BAM(RESET_BAM_CH.reset_bam.collect(), threads)
+        NANOPLOT_BAM_CH = NANOPLOT_BAM(RESET_BAM_COLLECTED_CH, threads)
 
         // wf-alignment gets downsampled BAMs if --downsample is set, otherwise full
         if (params.downsample) {
-        // Yes, we're downsampling
-            DOWNSAMPLE_BAM_CH = DOWNSAMPLE_BAM(RESET_BAM_CH.reset_bam)
+        // Flatten collected channel back to per-BAM items for parallel downsampling
+            DOWNSAMPLE_BAM_CH = DOWNSAMPLE_BAM(RESET_BAM_COLLECTED_CH.flatten(), params.downsample)
 
             WF_ALIGNMENT_BAM_CH = WF_ALIGNMENT_BAM(DOWNSAMPLE_BAM_CH.downsampled_bam.collect(), ref_dir, threads)
 
         } else {
-        // No downsampling
-              WF_ALIGNMENT_BAM_CH = WF_ALIGNMENT_BAM(RESET_BAM_CH.reset_bam.collect(), ref_dir, threads)
+            WF_ALIGNMENT_BAM_CH = WF_ALIGNMENT_BAM(RESET_BAM_COLLECTED_CH, ref_dir, threads)
         }
 
     } else {
 //        Working with FastQs....
         Channel.fromPath(params.fastq, checkIfExists: true).set { fastq_ch }
 
+        // Collect into a single value channel — safe for multiple subscribers, avoids splitting
+        FASTQ_COLLECTED_CH = fastq_ch.collect()
+
         // NanoPlot always gets the full (non-downsampled) data for accurate stats
-        NANOPLOT_FASTQ_CH = NANOPLOT_FASTQ(fastq_ch.collect(), threads)
+        NANOPLOT_FASTQ_CH = NANOPLOT_FASTQ(FASTQ_COLLECTED_CH, threads)
 
         // wf-alignment gets downsampled FASTQs if --downsample is set, otherwise full
         if (params.downsample) {
-        // Yes, we're downsampling
-            DOWNSAMPLE_FASTQ_CH = DOWNSAMPLE_FASTQ(fastq_ch)
+        // Flatten collected channel back to per-FASTQ items for parallel downsampling
+            DOWNSAMPLE_FASTQ_CH = DOWNSAMPLE_FASTQ(FASTQ_COLLECTED_CH.flatten(), params.downsample)
             WF_ALIGNMENT_FASTQ_CH = WF_ALIGNMENT_FASTQ(DOWNSAMPLE_FASTQ_CH.downsampled_fastq.collect(), ref_dir, threads)
 
         } else {
-        // No downsampling
-            WF_ALIGNMENT_FASTQ_CH = WF_ALIGNMENT_FASTQ(fastq_ch.collect(), ref_dir, threads)
+            WF_ALIGNMENT_FASTQ_CH = WF_ALIGNMENT_FASTQ(FASTQ_COLLECTED_CH, ref_dir, threads)
         }
     }
 }
