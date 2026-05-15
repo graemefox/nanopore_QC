@@ -10,7 +10,6 @@ nextflow_version="v.0.1"
 params.bam                  = false
 params.fastq                = false
 params.downsample           = false   // fraction to keep e.g. 0.1 for 10%. false = no downsampling
-params.EPI2ME_profile = 'standard'
 
 if (!params.bam && !params.fastq) {
     error "ERROR: Please provide either --bam or --fastq"
