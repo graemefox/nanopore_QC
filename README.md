@@ -1,5 +1,9 @@
 # nanopore_QC
 
+### Latest updates
+- fixed --bam and --fastq lists only using the last file as input
+- added Nextflow and Singularity to conda environment
+
 ### Requirements
 [Nextflow](https://www.nextflow.io/)
 
